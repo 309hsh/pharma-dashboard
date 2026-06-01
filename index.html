@@ -550,12 +550,12 @@ function showToast(msg, type) {
 }
 
 async function refreshData() {
-  const btn = document.getElementById('refreshBtn');
-  const icon = btn.querySelector('.btn-icon');
+  const btn   = document.getElementById('refreshBtn');
+  const icon  = btn.querySelector('.btn-icon');
   const label = btn.querySelector('.btn-label');
 
-  if (location.protocol === 'file:' || location.hostname !== 'localhost') {
-    showToast('⚠ 업데이트는 로컬 서버(자금일보_서버시작.bat)에서만 가능합니다.', 'error');
+  if (location.protocol === 'file:') {
+    showToast('⚠ 자금일보_자동감시_시작.bat 을 먼저 실행해 주세요.', 'error');
     return;
   }
 
@@ -563,20 +563,30 @@ async function refreshData() {
   btn.classList.add('loading');
   label.textContent = '업데이트 중...';
 
+  // 로컬 auto_watcher 서버 직접 호출 (어느 URL에서 접속해도 동작)
+  const LOCAL = 'http://localhost:8765/update';
+  const isLocal = location.hostname === 'localhost';
+
   try {
-    const res = await fetch('/update', { method: 'POST' });
+    const res = await fetch(LOCAL, { method: 'POST' });
     if (res.ok) {
-      showToast('✓ 데이터가 업데이트되었습니다.', 'success');
-      setTimeout(() => location.reload(), 800);
+      if (isLocal) {
+        showToast('✓ 업데이트 완료!', 'success');
+        setTimeout(() => location.reload(), 800);
+      } else {
+        showToast('✓ 업데이트 완료! 1~2분 후 새로고침(F5)하세요.', 'success');
+        btn.disabled = false;
+        btn.classList.remove('loading');
+        label.textContent = '데이터 불러오기';
+      }
     } else {
-      const err = await res.text();
-      showToast('오류: ' + err.slice(0, 80), 'error');
+      showToast('오류가 발생했습니다.', 'error');
       btn.disabled = false;
       btn.classList.remove('loading');
       label.textContent = '데이터 불러오기';
     }
   } catch(e) {
-    showToast('⚠ 서버에 연결할 수 없습니다.', 'error');
+    showToast('⚠ 자금일보_자동감시_시작.bat 을 먼저 실행해 주세요.', 'error');
     btn.disabled = false;
     btn.classList.remove('loading');
     label.textContent = '데이터 불러오기';
@@ -586,12 +596,6 @@ async function refreshData() {
 // 초기화
 renderYearSelector();
 renderCalendar();
-
-// localhost가 아니면 업데이트 버튼 숨김
-if (location.hostname !== 'localhost') {
-  const btn = document.getElementById('refreshBtn');
-  if (btn) btn.style.display = 'none';
-}
 
 // ── 비밀번호 인증 ──────────────────────────────────────
 const _K = 'cGhhcm1hLWJyb3M=';

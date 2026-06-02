@@ -259,7 +259,10 @@ def fetch_smbs_rates(all_dates):
     rates = {}
     try:
         with sync_playwright() as p:
-            browser = p.chromium.launch(headless=True)
+            browser = p.chromium.launch(
+                headless=True,
+                args=['--no-sandbox', '--disable-dev-shm-usage', '--disable-gpu']
+            )
             pg = browser.new_page()
             yr, mo = sy, sm
             while (yr, mo) <= (ey, em):
@@ -291,7 +294,9 @@ def fetch_smbs_rates(all_dates):
                     yr, mo = yr + 1, 1
             browser.close()
     except Exception as e:
+        import traceback
         print(f'  SMBS 오류: {e}')
+        print(traceback.format_exc())
     return rates
 
 print('USD/KRW 환율 데이터 가져오는 중 (SMBS 매매기준율)...')

@@ -135,7 +135,8 @@ print(f'일별시트 날짜: {sorted(daily_sheets.keys())}')
 # 3. 시트1 읽기 (월누적 거래내역)
 # ──────────────────────────────────────────────────────────
 df_raw = xl.parse('시트1', header=None)
-df = df_raw.iloc[2:].copy()  # 0행: 헤더, 1행: 전기이월 → 2행부터 실제 거래
+# 0행: 헤더, 1행: 전기이월(있을 수도 없을 수도) → 전기이월 필터로 처리
+df = df_raw.iloc[1:].copy()
 df = df.rename(columns={0:'date',1:'account',2:'category',3:'description',4:'counterparty',5:'deposit',6:'withdrawal'})
 df = df[['date','account','category','description','counterparty','deposit','withdrawal']].copy()
 df = df[df['date'].notna() & (df['date'].astype(str).str.strip() != '전기이월')].copy()
@@ -204,8 +205,13 @@ for acct in all_accounts:
         acct_initial_bal[acct] = cur_bal
         continue
     sorted_dates = sorted(daily.keys())
-    cum_net = sum(daily[d]['dep'] - daily[d]['wdr'] for d in sorted_dates)
-    initial_bal = cur_bal - cum_net
+    if sorted_dates and sorted_dates[0] > anchor_date:
+        # 앵커가 모든 거래보다 이전 → 앵커 잔액이 곧 초기 잔액 (순방향 계산)
+        initial_bal = cur_bal
+    else:
+        # 앵커가 거래 중간 또는 이후 → 역산 (기존 방식)
+        cum_net = sum(daily[d]['dep'] - daily[d]['wdr'] for d in sorted_dates)
+        initial_bal = cur_bal - cum_net
     acct_initial_bal[acct] = initial_bal
     running = initial_bal
     end_bals = {}
@@ -225,43 +231,87 @@ def get_end_bal_on(acct, date):
     return acct_initial_bal[acct]  # 첫 거래 이전 시점
 
 # ──────────────────────────────────────────────────────────
-# 5b. USD/KRW 환율 데이터 (네이버 금융)
+# 5b. USD/KRW 환율 데이터 (서울외국환중개 매매기준율)
 # ──────────────────────────────────────────────────────────
-print('USD/KRW 환율 데이터 가져오는 중...')
-usd_krw_rates = {}  # {date_str: float}  예: {'2026.05.27': 1502.00}
-
-min_needed = min(all_dates) if all_dates else '2026.01.01'
-h_nav = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'}
-
-for page in range(1, 50):
+def fetch_smbs_rates(all_dates):
+    """SMBS에서 월별 USD/KRW 매매기준율 가져오기 (Playwright 사용)"""
+    import calendar as _cal
     try:
-        r = requests.get(
-            'https://finance.naver.com/marketindex/exchangeDailyQuote.naver',
-            params={'marketindexCd': 'FX_USDKRW', 'page': str(page)},
-            headers=h_nav, timeout=10
-        )
-        r.encoding = 'utf-8'
-        nums = re.findall(
-            r'(\d{4}\.\d{2}\.\d{2})[^<]*</td>\s*<td[^>]*>([\d,\.]+)',
-            r.text
-        )
-        if not nums:
-            print(f'  환율 {page}페이지: 데이터 없음, 종료')
-            break
-        for date_s, rate_s in nums:
-            usd_krw_rates[date_s] = float(rate_s.replace(',', ''))
-        # 필요 범위 커버됐으면 종료
-        if usd_krw_rates and min(usd_krw_rates.keys()) <= min_needed:
-            print(f'  환율 {page}페이지까지 로드 완료 ({len(usd_krw_rates)}일치)')
-            break
+        from playwright.sync_api import sync_playwright
+    except ImportError:
+        print('  playwright 미설치 → pip install playwright && playwright install chromium')
+        return {}
+
+    if not all_dates:
+        return {}
+
+    # 필요한 월 범위 계산
+    start_date = min(all_dates)
+    end_date   = max(all_dates)
+    sy, sm = int(start_date[:4]), int(start_date[5:7])
+    ey, em = int(end_date[:4]),   int(end_date[5:7])
+    # 현재 월도 포함 (오늘 환율)
+    import datetime
+    today = datetime.date.today()
+    if (today.year, today.month) > (ey, em):
+        ey, em = today.year, today.month
+
+    rates = {}
+    try:
+        with sync_playwright() as p:
+            browser = p.chromium.launch(headless=True)
+            pg = browser.new_page()
+            yr, mo = sy, sm
+            while (yr, mo) <= (ey, em):
+                last_day = _cal.monthrange(yr, mo)[1]
+                url = (f'http://www.smbs.biz/ExRate/StdExRate.jsp'
+                       f'?StrSch_sYear={yr}&StrSch_sMonth={mo:02d}&StrSch_sDay=01'
+                       f'&StrSch_eYear={yr}&StrSch_eMonth={mo:02d}&StrSch_eDay={last_day}'
+                       f'&tongwha_code=USD')
+                pg.goto(url, timeout=30000)
+                pg.wait_for_load_state('networkidle')
+                pg.wait_for_timeout(1500)
+
+                for row in pg.query_selector_all('table tr'):
+                    cols = [c.strip() for c in row.inner_text().split('\t') if c.strip()]
+                    if len(cols) >= 3 and re.match(r'\d{4}\.\d{2}\.\d{2}', cols[0]):
+                        try:
+                            rates[cols[0]] = float(cols[2].replace(',', ''))
+                        except:
+                            pass
+                print(f'  SMBS {yr}.{mo:02d}: {sum(1 for d in rates if d.startswith(f"{yr}.{mo:02d}"))}건')
+                mo += 1
+                if mo > 12:
+                    yr, mo = yr + 1, 1
+            browser.close()
     except Exception as e:
-        print(f'  환율 {page}페이지 오류: {e}')
-        break
+        print(f'  SMBS 오류: {e}')
+    return rates
+
+print('USD/KRW 환율 데이터 가져오는 중 (SMBS 매매기준율)...')
+usd_krw_rates = fetch_smbs_rates(all_dates)
+
+# Fallback: 네이버 금융
+if not usd_krw_rates:
+    print('  SMBS 실패 → 네이버 금융으로 대체')
+    min_needed = min(all_dates) if all_dates else '2026.01.01'
+    h_nav = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'}
+    for pg in range(1, 50):
+        try:
+            r = requests.get('https://finance.naver.com/marketindex/exchangeDailyQuote.naver',
+                             params={'marketindexCd':'FX_USDKRW','page':str(pg)},
+                             headers=h_nav, timeout=10)
+            r.encoding = 'utf-8'
+            nums = re.findall(r'(\d{4}\.\d{2}\.\d{2})[^<]*</td>\s*<td[^>]*>([\d,\.]+)', r.text)
+            if not nums: break
+            for ds, rs in nums:
+                usd_krw_rates[ds] = float(rs.replace(',',''))
+            if usd_krw_rates and min(usd_krw_rates.keys()) <= min_needed: break
+        except: break
 
 print(f'환율 데이터: {len(usd_krw_rates)}건')
 if usd_krw_rates:
-    sample_dates = sorted(usd_krw_rates.keys(), reverse=True)[:3]
-    for sd in sample_dates:
+    for sd in sorted(usd_krw_rates.keys(), reverse=True)[:3]:
         print(f'  {sd}: {usd_krw_rates[sd]:,.2f}')
 
 def get_rate_on(date_str):
@@ -752,7 +802,7 @@ function renderTxTable(tableId, rows, amountField, amountClass, date) {{
   const cols = [
     {{ key: 'account',      label: '계좌',    width: '80px'  }},
     {{ key: 'category',     label: '계정과목', width: '100px' }},
-    {{ key: 'description',  label: '적 요',   width: ''      }},
+    {{ key: 'description',  label: '적 요',   width: '160px' }},
     {{ key: amountField,    label: '금 액',   width: '130px' }},
     {{ key: 'counterparty', label: '거래처',  width: '150px' }},
   ];
@@ -956,43 +1006,48 @@ async function refreshData() {{
   const icon  = btn.querySelector('.btn-icon');
   const label = btn.querySelector('.btn-label');
 
-  if (location.protocol === 'file:') {{
-    showToast('⚠ 자금일보_자동감시_시작.bat 을 먼저 실행해 주세요.', 'error');
-    return;
-  }}
-
   btn.disabled = true;
   btn.classList.add('loading');
   label.textContent = '업데이트 중...';
 
-  // 로컬 auto_watcher 서버 직접 호출 (어느 URL에서 접속해도 동작)
-  const LOCAL = 'http://localhost:8765/update';
+  // 1) 로컬 서버 우선 시도 (자동감시 실행 중일 때)
+  const LOCAL  = 'http://localhost:8765/update';
+  const WEBHOOK = 'https://script.google.com/macros/s/AKfycbyPntu89UWl3G-BaklTRq1Sx_yJAeh1lrD6W8BT-HaOXkrunGDZDkNFFi33lwc00Oad/exec';
   const isLocal = location.hostname === 'localhost';
 
-  try {{
-    const res = await fetch(LOCAL, {{ method: 'POST' }});
-    if (res.ok) {{
-      if (isLocal) {{
-        showToast('✓ 업데이트 완료!', 'success');
-        setTimeout(() => location.reload(), 800);
-      }} else {{
-        showToast('✓ 업데이트 완료! 1~2분 후 새로고침(F5)하세요.', 'success');
-        btn.disabled = false;
-        btn.classList.remove('loading');
-        label.textContent = '데이터 불러오기';
+  let success = false;
+
+  // 로컬 서버 시도
+  if (!success) {{
+    try {{
+      const res = await fetch(LOCAL, {{ method: 'POST', signal: AbortSignal.timeout(5000) }});
+      if (res.ok) {{
+        success = true;
+        if (isLocal) {{
+          showToast('✓ 업데이트 완료!', 'success');
+          setTimeout(() => location.reload(), 800);
+          return;
+        }} else {{
+          showToast('✓ 업데이트 요청 완료! 2~3분 후 F5 새로고침하세요.', 'success');
+        }}
       }}
-    }} else {{
-      showToast('오류가 발생했습니다.', 'error');
-      btn.disabled = false;
-      btn.classList.remove('loading');
-      label.textContent = '데이터 불러오기';
-    }}
-  }} catch(e) {{
-    showToast('⚠ 자금일보_자동감시_시작.bat 을 먼저 실행해 주세요.', 'error');
-    btn.disabled = false;
-    btn.classList.remove('loading');
-    label.textContent = '데이터 불러오기';
+    }} catch(e) {{ /* 로컬 서버 없음 → 웹훅으로 */ }}
   }}
+
+  // 웹훅(Google Apps Script) 시도
+  if (!success) {{
+    try {{
+      await fetch(WEBHOOK, {{ mode: 'no-cors' }});
+      success = true;
+      showToast('✓ GitHub 업데이트 요청! 2~3분 후 F5 새로고침하세요.', 'success');
+    }} catch(e) {{
+      showToast('⚠ 업데이트 요청 실패. 네트워크를 확인해 주세요.', 'error');
+    }}
+  }}
+
+  btn.disabled = false;
+  btn.classList.remove('loading');
+  label.textContent = '데이터 불러오기';
 }}
 
 // 초기화

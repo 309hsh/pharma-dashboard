@@ -150,11 +150,6 @@
   .tx-table td { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; max-width: 0; }
   .tx-table td.desc { white-space: normal; word-break: break-word; max-width: 0; line-height: 1.4; }
   .tx-table td.center { text-align: center; }
-  /* 컬럼 리사이즈 핸들 */
-  .tx-table th { position: relative; }
-  .col-resizer { position: absolute; right: 0; top: 0; width: 5px; height: 100%;
-    cursor: col-resize; user-select: none; z-index: 1; }
-  .col-resizer:hover, .col-resizer.resizing { background: #3182F6; opacity: 0.7; }
 
   /* 정렬 헤더 */
   .sortable-th { cursor: pointer; user-select: none; }
@@ -357,16 +352,11 @@ function renderTxTable(tableId, rows, amountField, amountClass, date) {
     { key: 'counterparty', label: '거래처',  width: '150px' },
   ];
 
-  // localStorage에서 저장된 너비 불러오기
-  const savedW = JSON.parse(localStorage.getItem('txColW') || '{}');
-  const headerCols = cols.map((c, idx) => {
+  const headerCols = cols.map(c => {
     const isActive = state.key === c.key;
     const arrow = isActive ? (state.dir === 1 ? '▲' : '▼') : '⇅';
-    const savedWidth = savedW[`${tableId}_${idx}`];
-    const wStyle = savedWidth ? `width:${savedWidth}px;` : (c.width ? `width:${c.width};` : '');
-    return `<th class="sortable-th" style="${wStyle}" onclick="sortTx('${tableId}','${c.key}','${date}')">`
-      + `${c.label} <span class="sort-arrow${isActive?' active':''}">${arrow}</span>`
-      + `<div class="col-resizer" onmousedown="startResize(event,${idx},'${tableId}')"></div></th>`;
+    const wStyle = c.width ? `width:${c.width};` : '';
+    return `<th class="sortable-th" style="${wStyle}" onclick="sortTx('${tableId}','${c.key}','${date}')">${c.label} <span class="sort-arrow${isActive?' active':''}">${arrow}</span></th>`;
   }).join('');
 
   let bodyRows = '';
@@ -603,34 +593,6 @@ async function refreshData() {
   btn.disabled = false;
   btn.classList.remove('loading');
   label.textContent = '데이터 불러오기';
-}
-
-// ── 컬럼 리사이즈 ─────────────────────────────────────────
-let _rsState = null;
-function startResize(e, colIdx, tableId) {
-  e.stopPropagation(); e.preventDefault();
-  const th = e.target.closest('th');
-  _rsState = { th, colIdx, tableId, startX: e.clientX, startW: th.offsetWidth };
-  e.target.classList.add('resizing');
-  document.addEventListener('mousemove', _onResize);
-  document.addEventListener('mouseup', _stopResize);
-}
-function _onResize(e) {
-  if (!_rsState) return;
-  const newW = Math.max(40, _rsState.startW + (e.clientX - _rsState.startX));
-  _rsState.th.style.width = newW + 'px';
-}
-function _stopResize(e) {
-  if (!_rsState) return;
-  const newW = Math.max(40, _rsState.startW + (e.clientX - _rsState.startX));
-  // localStorage에 저장
-  const saved = JSON.parse(localStorage.getItem('txColW') || '{}');
-  saved[`${_rsState.tableId}_${_rsState.colIdx}`] = newW;
-  localStorage.setItem('txColW', JSON.stringify(saved));
-  document.querySelectorAll('.col-resizer').forEach(r => r.classList.remove('resizing'));
-  document.removeEventListener('mousemove', _onResize);
-  document.removeEventListener('mouseup', _stopResize);
-  _rsState = null;
 }
 
 // 초기화

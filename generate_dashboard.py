@@ -273,12 +273,18 @@ def fetch_smbs_rates(all_dates):
                 pg.wait_for_timeout(1500)
 
                 for row in pg.query_selector_all('table tr'):
-                    cols = [c.strip() for c in row.inner_text().split('\t') if c.strip()]
-                    if len(cols) >= 3 and re.match(r'\d{4}\.\d{2}\.\d{2}', cols[0]):
-                        try:
-                            rates[cols[0]] = float(cols[2].replace(',', ''))
-                        except:
-                            pass
+                    cells = row.query_selector_all('td')
+                    if len(cells) >= 3:
+                        date_text = cells[0].inner_text().strip()
+                        rate_text = cells[2].inner_text().strip().replace(',', '').replace('\n', '').strip()
+                        if re.match(r'\d{4}\.\d{2}\.\d{2}', date_text):
+                            try:
+                                val = float(rate_text)
+                                if val > 100:  # 유효한 환율값인지 확인 (USD/KRW은 항상 100 이상)
+                                    rates[date_text] = val
+                                    print(f'    {date_text}: {val}')
+                            except:
+                                pass
                 print(f'  SMBS {yr}.{mo:02d}: {sum(1 for d in rates if d.startswith(f"{yr}.{mo:02d}"))}건')
                 mo += 1
                 if mo > 12:

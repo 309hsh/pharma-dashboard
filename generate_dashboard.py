@@ -1012,7 +1012,7 @@ async function refreshData() {{
 
   // 1) 로컬 서버 우선 시도 (자동감시 실행 중일 때)
   const LOCAL  = 'http://localhost:8765/update';
-  const WEBHOOK = 'https://script.google.com/macros/s/AKfycbyPntu89UWl3G-BaklTRq1Sx_yJAeh1lrD6W8BT-HaOXkrunGDZDkNFFi33lwc00Oad/exec';
+  const WEBHOOK = 'https://script.google.com/macros/s/AKfycbzAcNubE-YyyuQdfxNoxO5LCqv36eyyhOsYrxi8w9r-tptWh6arZGHlc6XUiF7vIyI0/exec';
   const isLocal = location.hostname === 'localhost';
 
   let success = false;

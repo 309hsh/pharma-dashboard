@@ -982,25 +982,29 @@ function renderReport(date) {{
       </tr>`;
     }});
     if (usdRows.length > 0) {{
+      const fmtUsdKrw = (usd) => usdRate ? '<span style="color:#F5A623;font-size:10px"> (≈₩' + fmt(Math.round(usd * usdRate)) + ')</span>' : '';
       summaryRows += `<tr class="subtotal-row">
         <td class="center">▸ 외화 소계</td>
-        <td class="num">${{fmtAmt(subUsdBegin, true)}}</td>
-        <td class="num deposit-amount">${{fmtAmt(subUsdDep, true)}}</td>
-        <td class="num withdrawal-amount">${{fmtAmt(subUsdWdr, true)}}</td>
-        <td class="num balance-amount">${{fmtAmt(subUsdEnd, true)}}</td>
+        <td class="num">${{fmtAmt(subUsdBegin, true)}}${{fmtUsdKrw(subUsdBegin)}}</td>
+        <td class="num deposit-amount">${{fmtAmt(subUsdDep, true)}}${{fmtUsdKrw(subUsdDep)}}</td>
+        <td class="num withdrawal-amount">${{fmtAmt(subUsdWdr, true)}}${{fmtUsdKrw(subUsdWdr)}}</td>
+        <td class="num balance-amount">${{fmtAmt(subUsdEnd, true)}}${{fmtUsdKrw(subUsdEnd)}}</td>
         <td class="num krw-amount">₩${{fmt(subUsdKrwEnd)}}</td>
       </tr>`;
     }}
 
-    // ── 전체 합계 ──
-    const totalKrwEnd = subKrwEnd + subUsdKrwEnd;
+    // ── 전체 합계 (원화환산) ──
+    const totalKrwBegin = subKrwBegin + (usdRate ? Math.round(subUsdBegin * usdRate) : 0);
+    const totalKrwDep   = subKrwDep   + (usdRate ? Math.round(subUsdDep   * usdRate) : 0);
+    const totalKrwWdr   = subKrwWdr   + (usdRate ? Math.round(subUsdWdr   * usdRate) : 0);
+    const totalKrwEnd   = subKrwEnd   + subUsdKrwEnd;
     summaryRows += `<tr class="total-row">
-      <td class="center">합 계</td>
-      <td class="num">-</td>
-      <td class="num">-</td>
-      <td class="num">-</td>
-      <td class="num">-</td>
-      <td class="num">₩${{fmt(totalKrwEnd)}}</td>
+      <td class="center">합 계 (원화환산)</td>
+      <td class="num">₩${{fmt(totalKrwBegin)}}</td>
+      <td class="num deposit-amount">₩${{fmt(totalKrwDep)}}</td>
+      <td class="num withdrawal-amount">₩${{fmt(totalKrwWdr)}}</td>
+      <td class="num balance-amount">₩${{fmt(totalKrwEnd)}}</td>
+      <td class="num krw-amount">₩${{fmt(totalKrwEnd)}}</td>
     </tr>`;
   }}
 

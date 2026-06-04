@@ -812,7 +812,6 @@ function renderTxTable(tableId, rows, amountField, amountClass, date) {{
       return state.dir * String(va).localeCompare(String(vb), 'ko');
     }});
   }}
-  const total = rows.reduce((s, r) => s + (r[amountField] || 0), 0);
 
   const cols = [
     {{ key: 'account',      label: '계좌',    width: '80px'  }},
@@ -831,28 +830,65 @@ function renderTxTable(tableId, rows, amountField, amountClass, date) {{
 
   let bodyRows = '';
   const isSummaryOnly = DATA[date] && DATA[date].summary_only;
+  const usdRate = DATA[date] ? DATA[date].usd_rate : null;
+
   if (sorted.length === 0) {{
     bodyRows = isSummaryOnly
       ? `<tr><td colspan="5" class="no-data" style="color:#636366;">개별 거래내역은 월누적 시트 반영 후 확인됩니다.</td></tr>`
       : `<tr><td colspan="5" class="no-data">${{amountField === 'deposit' ? '입금' : '출금'}} 내역 없음</td></tr>`;
   }} else {{
-    sorted.forEach(row => {{
+    const krwTxRows = sorted.filter(r => !USD_ACCOUNTS.has(r.account));
+    const usdTxRows = sorted.filter(r => USD_ACCOUNTS.has(r.account));
+
+    // ── 원화 거래 ──
+    let krwSubtotal = 0;
+    krwTxRows.forEach(row => {{
+      krwSubtotal += row[amountField] || 0;
       const desc = row.description || '';
-      const isUsdAcct = USD_ACCOUNTS.has(row.account);
-      const amtDisplay = isUsdAcct
-        ? '$' + Math.abs(row[amountField]).toLocaleString('ko-KR', {{minimumFractionDigits: 2, maximumFractionDigits: 2}})
-        : '₩' + Math.round(row[amountField]).toLocaleString('ko-KR');
       bodyRows += `<tr>
         <td class="center" title="${{row.account||''}}">${{row.account||''}}</td>
         <td class="center" title="${{row.category||''}}">${{row.category||''}}</td>
         <td class="desc" title="${{desc}}">${{desc}}</td>
-        <td class="num ${{amountClass}}">${{amtDisplay}}</td>
+        <td class="num ${{amountClass}}">₩${{Math.round(row[amountField]).toLocaleString('ko-KR')}}</td>
         <td title="${{row.counterparty||''}}">${{row.counterparty||''}}</td>
       </tr>`;
     }});
+    if (krwTxRows.length > 0) {{
+      bodyRows += `<tr class="subtotal-row">
+        <td class="center" colspan="3">▸ 원화 소계</td>
+        <td class="num ${{amountClass}}">₩${{fmt(krwSubtotal)}}</td>
+        <td></td>
+      </tr>`;
+    }}
+
+    // ── 외화 거래 (USD) ──
+    let usdSubtotal = 0;
+    usdTxRows.forEach(row => {{
+      usdSubtotal += row[amountField] || 0;
+      const desc = row.description || '';
+      bodyRows += `<tr>
+        <td class="center" title="${{row.account||''}}">${{row.account||''}}</td>
+        <td class="center" title="${{row.category||''}}">${{row.category||''}}</td>
+        <td class="desc" title="${{desc}}">${{desc}}</td>
+        <td class="num ${{amountClass}}">$${{Math.abs(row[amountField]).toLocaleString('ko-KR', {{minimumFractionDigits:2, maximumFractionDigits:2}})}}</td>
+        <td title="${{row.counterparty||''}}">${{row.counterparty||''}}</td>
+      </tr>`;
+    }});
+    if (usdTxRows.length > 0) {{
+      const usdSubKrw = usdRate ? Math.round(usdSubtotal * usdRate) : null;
+      bodyRows += `<tr class="subtotal-row">
+        <td class="center" colspan="3">▸ 외화 소계</td>
+        <td class="num ${{amountClass}}">$${{usdSubtotal.toLocaleString('ko-KR', {{minimumFractionDigits:2, maximumFractionDigits:2}})}}${{usdSubKrw !== null ? ' <span style="color:#F5A623;font-size:10px">(≈₩' + fmt(usdSubKrw) + ')</span>' : ''}}</td>
+        <td></td>
+      </tr>`;
+    }}
+
+    // ── 원화환산 합계 ──
+    const usdKrw = usdRate ? Math.round(usdSubtotal * usdRate) : 0;
+    const totalKrw = Math.round(krwSubtotal) + usdKrw;
     bodyRows += `<tr class="total-row">
       <td class="center" colspan="3">합 계 (원화환산)</td>
-      <td class="num">₩${{fmt(total)}}</td>
+      <td class="num">₩${{fmt(totalKrw)}}</td>
       <td></td>
     </tr>`;
   }}

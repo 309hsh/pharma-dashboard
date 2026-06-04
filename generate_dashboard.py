@@ -377,10 +377,10 @@ for date in all_dates:
 
         summary.append({
             'account':    acct,
-            'begin':      round(begin_bal),
-            'deposit':    round(dep),
-            'withdrawal': round(wdr),
-            'end':        round(end_bal),
+            'begin':      round(begin_bal, 2) if is_usd else round(begin_bal),
+            'deposit':    round(dep,       2) if is_usd else round(dep),
+            'withdrawal': round(wdr,       2) if is_usd else round(wdr),
+            'end':        round(end_bal,   2) if is_usd else round(end_bal),
             'is_usd':     is_usd,
             'krw_end':    krw_end,
         })
@@ -436,10 +436,10 @@ for date_str, sheet_data in daily_sheets.items():
 
         summary.append({
             'account':    acct,
-            'begin':      round(begin),
-            'deposit':    round(dep),
-            'withdrawal': round(wdr),
-            'end':        round(end),
+            'begin':      round(begin, 2) if is_usd else round(begin),
+            'deposit':    round(dep,   2) if is_usd else round(dep),
+            'withdrawal': round(wdr,   2) if is_usd else round(wdr),
+            'end':        round(end,   2) if is_usd else round(end),
             'is_usd':     is_usd,
             'krw_end':    krw_end,
         })
@@ -595,6 +595,8 @@ HTML = f"""<!DOCTYPE html>
   tr:hover td {{ background: #2C2C2E; }}
   tr.total-row td {{ background: #1C3A5E; color: #5E9CF5; font-weight: 700; border-bottom: none; }}
   tr.total-row:hover td {{ background: #243F6A; }}
+  tr.subtotal-row td {{ background: #252530; color: #C8C8E8; font-weight: 700; border-top: 1px solid #3A3A5C; border-bottom: 1px solid #3A3A5C; }}
+  tr.subtotal-row:hover td {{ background: #2C2C3C; }}
 
   .deposit-amount {{ color: #05C072; font-weight: 600; }}
   .withdrawal-amount {{ color: #FF453A; font-weight: 600; }}
@@ -726,8 +728,10 @@ function fmtDate(d) {{
 }}
 function fmtAmt(n, isUsd) {{
   if (n === null || n === undefined) return '-';
-  const prefix = isUsd ? '$' : '₩';
-  return prefix + Math.abs(Math.round(n)).toLocaleString('ko-KR');
+  if (isUsd) {{
+    return '$' + Math.abs(n).toLocaleString('ko-KR', {{minimumFractionDigits: 2, maximumFractionDigits: 2}});
+  }}
+  return '₩' + Math.abs(Math.round(n)).toLocaleString('ko-KR');
 }}
 function fmtKrw(n) {{
   if (n === null || n === undefined) return '<span style="color:#48484A">-</span>';
@@ -884,47 +888,81 @@ function renderReport(date) {{
     : '';
 
   // 계좌 요약 테이블
+  const summary = d.summary || [];
+  const krwRows = summary.filter(r => !r.is_usd);
+  const usdRows = summary.filter(r => r.is_usd);
   let summaryRows = '';
-  let sumKrwBegin = 0, sumKrwDep = 0, sumKrwWdr = 0, sumKrwEnd = 0;
 
-  (d.summary || []).forEach(row => {{
-    const isUsd = row.is_usd;
-    const krwEnd = row.krw_end;
-
-    // 원화 합계 계산
-    if (!isUsd) {{
-      sumKrwBegin += row.begin || 0;
-      sumKrwDep   += row.deposit || 0;
-      sumKrwWdr   += row.withdrawal || 0;
-      sumKrwEnd   += row.end || 0;
-    }} else if (krwEnd !== null) {{
-      // USD 계좌: 원화환산 잔액만 원화잔액 합계에 포함
-      sumKrwEnd += krwEnd;
-    }}
-
-    const usdBadge = isUsd ? '<span class="usd-badge">USD</span>' : '';
-    const krwCell = `<td class="num krw-amount">${{fmtKrw(krwEnd)}}</td>`;
-
-    summaryRows += `<tr>
-      <td class="center">${{row.account}}${{usdBadge}}</td>
-      <td class="num balance-amount">${{fmtAmt(row.begin, isUsd)}}</td>
-      <td class="num deposit-amount">${{fmtAmt(row.deposit, isUsd)}}</td>
-      <td class="num withdrawal-amount">${{fmtAmt(row.withdrawal, isUsd)}}</td>
-      <td class="num balance-amount">${{fmtAmt(row.end, isUsd)}}</td>
-      ${{krwCell}}
-    </tr>`;
-  }});
-
-  if (summaryRows === '') {{
+  if (summary.length === 0) {{
     summaryRows = '<tr><td colspan="6" class="no-data">계좌 데이터 없음</td></tr>';
   }} else {{
+    let subKrwBegin = 0, subKrwDep = 0, subKrwWdr = 0, subKrwEnd = 0;
+    let subUsdBegin = 0, subUsdDep = 0, subUsdWdr = 0, subUsdEnd = 0;
+    let subUsdKrwEnd = 0;
+
+    // ── 원화 계좌 ──
+    krwRows.forEach(row => {{
+      subKrwBegin += row.begin || 0;
+      subKrwDep   += row.deposit || 0;
+      subKrwWdr   += row.withdrawal || 0;
+      subKrwEnd   += row.end || 0;
+      summaryRows += `<tr>
+        <td class="center">${{row.account}}</td>
+        <td class="num balance-amount">${{fmtAmt(row.begin, false)}}</td>
+        <td class="num deposit-amount">${{fmtAmt(row.deposit, false)}}</td>
+        <td class="num withdrawal-amount">${{fmtAmt(row.withdrawal, false)}}</td>
+        <td class="num balance-amount">${{fmtAmt(row.end, false)}}</td>
+        <td class="num krw-amount">₩${{fmt(row.krw_end)}}</td>
+      </tr>`;
+    }});
+    if (krwRows.length > 0) {{
+      summaryRows += `<tr class="subtotal-row">
+        <td class="center">▸ 원화 소계</td>
+        <td class="num">₩${{fmt(subKrwBegin)}}</td>
+        <td class="num deposit-amount">₩${{fmt(subKrwDep)}}</td>
+        <td class="num withdrawal-amount">₩${{fmt(subKrwWdr)}}</td>
+        <td class="num balance-amount">₩${{fmt(subKrwEnd)}}</td>
+        <td class="num krw-amount">₩${{fmt(subKrwEnd)}}</td>
+      </tr>`;
+    }}
+
+    // ── 외화 계좌 (USD) ──
+    usdRows.forEach(row => {{
+      const krwEnd = row.krw_end;
+      subUsdBegin += row.begin || 0;
+      subUsdDep   += row.deposit || 0;
+      subUsdWdr   += row.withdrawal || 0;
+      subUsdEnd   += row.end || 0;
+      if (krwEnd !== null && krwEnd !== undefined) subUsdKrwEnd += krwEnd;
+      summaryRows += `<tr>
+        <td class="center">${{row.account}}<span class="usd-badge">USD</span></td>
+        <td class="num balance-amount">${{fmtAmt(row.begin, true)}}</td>
+        <td class="num deposit-amount">${{fmtAmt(row.deposit, true)}}</td>
+        <td class="num withdrawal-amount">${{fmtAmt(row.withdrawal, true)}}</td>
+        <td class="num balance-amount">${{fmtAmt(row.end, true)}}</td>
+        <td class="num krw-amount">${{fmtKrw(krwEnd)}}</td>
+      </tr>`;
+    }});
+    if (usdRows.length > 0) {{
+      summaryRows += `<tr class="subtotal-row">
+        <td class="center">▸ 외화 소계</td>
+        <td class="num">${{fmtAmt(subUsdBegin, true)}}</td>
+        <td class="num deposit-amount">${{fmtAmt(subUsdDep, true)}}</td>
+        <td class="num withdrawal-amount">${{fmtAmt(subUsdWdr, true)}}</td>
+        <td class="num balance-amount">${{fmtAmt(subUsdEnd, true)}}</td>
+        <td class="num krw-amount">₩${{fmt(subUsdKrwEnd)}}</td>
+      </tr>`;
+    }}
+
+    // ── 전체 합계 ──
+    const totalKrwEnd = subKrwEnd + subUsdKrwEnd;
     summaryRows += `<tr class="total-row">
       <td class="center">합 계</td>
-      <td class="num">₩${{fmt(sumKrwBegin)}}</td>
-      <td class="num">₩${{fmt(sumKrwDep)}}</td>
-      <td class="num">₩${{fmt(sumKrwWdr)}}</td>
       <td class="num">-</td>
-      <td class="num">₩${{fmt(sumKrwEnd)}}</td>
+      <td class="num">-</td>
+      <td class="num">-</td>
+      <td class="num">-</td>
+      <td class="num">₩${{fmt(totalKrwEnd)}}</td>
     </tr>`;
   }}
 

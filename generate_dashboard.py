@@ -388,8 +388,8 @@ for date in all_dates:
     day_df   = df[df['date'] == date]
     dep_list = day_df[day_df['deposit']   > 0][['account','category','description','counterparty','deposit']].copy()
     wdr_list = day_df[day_df['withdrawal'] > 0][['account','category','description','counterparty','withdrawal']].copy()
-    dep_list['deposit']    = dep_list['deposit'].apply(lambda x: int(round(x)))
-    wdr_list['withdrawal'] = wdr_list['withdrawal'].apply(lambda x: int(round(x)))
+    dep_list['deposit']    = dep_list.apply(lambda r: round(r['deposit'], 2) if r['account'] in USD_ACCOUNTS else int(round(r['deposit'])), axis=1)
+    wdr_list['withdrawal'] = wdr_list.apply(lambda r: round(r['withdrawal'], 2) if r['account'] in USD_ACCOUNTS else int(round(r['withdrawal'])), axis=1)
 
     dashboard_data[date] = {
         'summary':          summary,
@@ -839,7 +839,9 @@ function renderTxTable(tableId, rows, amountField, amountClass, date) {{
     sorted.forEach(row => {{
       const desc = row.description || '';
       const isUsdAcct = USD_ACCOUNTS.has(row.account);
-      const amtDisplay = isUsdAcct ? '$' + Math.round(row[amountField]).toLocaleString('ko-KR') : '₩' + Math.round(row[amountField]).toLocaleString('ko-KR');
+      const amtDisplay = isUsdAcct
+        ? '$' + Math.abs(row[amountField]).toLocaleString('ko-KR', {{minimumFractionDigits: 2, maximumFractionDigits: 2}})
+        : '₩' + Math.round(row[amountField]).toLocaleString('ko-KR');
       bodyRows += `<tr>
         <td class="center" title="${{row.account||''}}">${{row.account||''}}</td>
         <td class="center" title="${{row.category||''}}">${{row.category||''}}</td>

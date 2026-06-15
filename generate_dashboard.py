@@ -388,8 +388,12 @@ for date in all_dates:
     day_df   = df[df['date'] == date]
     dep_list = day_df[day_df['deposit']   > 0][['account','category','description','counterparty','deposit']].copy()
     wdr_list = day_df[day_df['withdrawal'] > 0][['account','category','description','counterparty','withdrawal']].copy()
-    dep_list['deposit']    = dep_list.apply(lambda r: round(r['deposit'], 2) if r['account'] in USD_ACCOUNTS else int(round(r['deposit'])), axis=1)
-    wdr_list['withdrawal'] = wdr_list.apply(lambda r: round(r['withdrawal'], 2) if r['account'] in USD_ACCOUNTS else int(round(r['withdrawal'])), axis=1)
+    usd_dep = dep_list['account'].isin(USD_ACCOUNTS)
+    dep_list.loc[usd_dep,  'deposit'] = dep_list.loc[usd_dep,  'deposit'].apply(lambda x: round(float(x), 2))
+    dep_list.loc[~usd_dep, 'deposit'] = dep_list.loc[~usd_dep, 'deposit'].apply(lambda x: int(round(float(x))))
+    usd_wdr = wdr_list['account'].isin(USD_ACCOUNTS)
+    wdr_list.loc[usd_wdr,  'withdrawal'] = wdr_list.loc[usd_wdr,  'withdrawal'].apply(lambda x: round(float(x), 2))
+    wdr_list.loc[~usd_wdr, 'withdrawal'] = wdr_list.loc[~usd_wdr, 'withdrawal'].apply(lambda x: int(round(float(x))))
 
     dashboard_data[date] = {
         'summary':          summary,

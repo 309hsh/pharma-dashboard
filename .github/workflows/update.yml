@@ -12,6 +12,8 @@ jobs:
       contents: write
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
@@ -21,7 +23,19 @@ jobs:
       - run: |
           git config user.email "action@github.com"
           git config user.name "GitHub Action"
+
+          # main 브랜치 업데이트
           git pull origin main --rebase --autostash
           git add index.html
           git diff --staged --quiet || git commit -m "Auto update $(date '+%Y-%m-%d %H:%M')"
           git push
+
+          # gh-pages 브랜치에 index.html 배포
+          cp index.html /tmp/dashboard.html
+          git fetch origin gh-pages
+          git checkout gh-pages
+          cp /tmp/dashboard.html index.html
+          git add index.html
+          git diff --staged --quiet || git commit -m "deploy: $(date '+%Y-%m-%d %H:%M')"
+          git push origin gh-pages
+          git checkout main

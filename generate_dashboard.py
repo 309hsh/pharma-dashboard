@@ -272,7 +272,7 @@ def fetch_smbs_rates(all_dates):
                        f'&StrSch_eYear={yr}&StrSch_eMonth={mo:02d}&StrSch_eDay={last_day}'
                        f'&tongwha_code=USD')
                 pg.goto(url, timeout=30000)
-                pg.wait_for_load_state('networkidle')
+                pg.wait_for_load_state('networkidle', timeout=10000)
                 pg.wait_for_timeout(1500)
 
                 for row in pg.query_selector_all('table tr'):

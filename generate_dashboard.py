@@ -1,4 +1,4 @@
-﻿import sys, os
+﻿﻿import sys, os
 sys.stdout.reconfigure(encoding='utf-8')
 import pandas as pd
 import json
@@ -197,6 +197,18 @@ ACCOUNT_ORDER = [
     '기업013','하나438',
 ]
 
+# 자금일보 실제 잔액으로 강제 설정 (시트1 누적 계산 오류 보정)
+# 형식: {'YYYY.MM.DD': {'계좌명': 당일잔액, ...}}
+MANUAL_BALANCE_ANCHOR = {
+    '2026.09.06': {
+        '토스(B2B)':       35_918_293,
+        '토스(친한스토어)': 10_097_785,
+        '토스(박약다식몰)':          0,
+        '토스(YDY몰)':      6_431_448,
+        '토스(시오레)':              0,
+    }
+}
+
 acct_end_bal    = {}
 acct_initial_bal = {}  # 거래 이전 초기 잔액
 
@@ -222,6 +234,22 @@ for acct in all_accounts:
         running += daily[d]['dep'] - daily[d]['wdr']
         end_bals[d] = running
     acct_end_bal[acct] = end_bals
+
+# 수동 잔액 앵커 적용: 지정 날짜 이전은 기존 계산 유지, 이후는 강제 잔액 기준으로 재계산
+for _manual_date, _manual_vals in sorted(MANUAL_BALANCE_ANCHOR.items()):
+    for _acct, _forced_bal in _manual_vals.items():
+        if _acct not in acct_end_bal:
+            continue
+        _daily = acct_daily.get(_acct, {})
+        _new_end_bals = {d: b for d, b in acct_end_bal[_acct].items() if d < _manual_date}
+        _new_end_bals[_manual_date] = _forced_bal
+        _running = _forced_bal
+        for _d in sorted(d for d in _daily if d > _manual_date):
+            _running += _daily[_d]['dep'] - _daily[_d]['wdr']
+            _new_end_bals[_d] = _running
+        acct_end_bal[_acct] = _new_end_bals
+        acct_initial_bal[_acct] = acct_initial_bal.get(_acct, _forced_bal)
+        print(f'  수동잔액 적용: {_acct} @ {_manual_date} = {_forced_bal:,}')
 
 def get_end_bal_on(acct, date):
     """해당 날짜 당일잔액 반환 (거래 없는 날은 직전 잔액 유지)"""

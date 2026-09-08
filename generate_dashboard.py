@@ -1,4 +1,4 @@
-import sys, os
+﻿import sys, os
 sys.stdout.reconfigure(encoding='utf-8')
 import pandas as pd
 import json
@@ -34,11 +34,13 @@ print(f'  다운로드 완료 - 시트: {all_sheet_names}')
 TARGET_ACCOUNTS = [
     '기업017','우리577','신한709','신한812','신한220',
     '국민930','국민323','국민962','하나104','하나652',
-    '토스(시오레)','토스(친한스토어)','토스(박약다식몰)','토스(b2b)',
+    '토스(시오레)','토스(친한스토어)','토스(박약다식몰)','토스(B2B)','토스(YDY몰)',
     '기업013','하나438',
 ]
 INACTIVE_ACCOUNTS = ['국민312','기업031','토스','하나014']
 USD_ACCOUNTS = {'기업013', '하나438'}
+# 계좌명 변경 매핑 (구명→신명): 역사적 거래데이터와 앵커 시트의 구명을 신명으로 정규화
+ACCOUNT_RENAME_MAP = {'토스(b2b)': '토스(B2B)'}
 
 def parse_daily_sheet(df):
     """
@@ -77,6 +79,7 @@ def parse_daily_sheet(df):
             break
         for j, val in enumerate(row):
             acct = str(val).strip()
+            acct = ACCOUNT_RENAME_MAP.get(acct, acct)  # 이름 변경 계좌 정규화
             if acct in TARGET_ACCOUNTS and acct not in result:
                 # $ 기호·콤마 제거 후 숫자 변환 (USD 계좌: '$ 233,709.82' 형식 처리)
                 def to_num(v):
@@ -143,7 +146,7 @@ df = df[df['date'].notna() & (df['date'].astype(str).str.strip() != '전기이�
 df['deposit']     = pd.to_numeric(df['deposit'],     errors='coerce').fillna(0)
 df['withdrawal']  = pd.to_numeric(df['withdrawal'],  errors='coerce').fillna(0)
 df['date']        = df['date'].astype(str).str.strip()
-df['account']     = df['account'].astype(str).str.strip()
+df['account']     = df['account'].astype(str).str.strip().map(lambda x: ACCOUNT_RENAME_MAP.get(x, x))
 df['category']    = df['category'].fillna('').astype(str)
 df['description'] = df['description'].fillna('').astype(str)
 df['counterparty']= df['counterparty'].fillna('').astype(str)
@@ -190,7 +193,7 @@ for acct in all_accounts:
 ACCOUNT_ORDER = [
     '기업017','우리577','신한709','신한812','신한220',
     '국민930','국민323','국민962','하나104','하나652',
-    '토스(시오레)','토스(친한스토어)','토스(박약다식몰)','토스(b2b)',
+    '토스(시오레)','토스(친한스토어)','토스(박약다식몰)','토스(B2B)','토스(YDY몰)',
     '기업013','하나438',
 ]
 
